@@ -1,0 +1,127 @@
+name: Tauri Linux
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    # Firebase env vars di-inject persis sama seperti Android build.
+    # Nilai dibaca dari GitHub Secrets (prioritas) atau Variables.
+    env:
+      VITE_FIREBASE_API_KEY:            ${{ secrets.VITE_FIREBASE_API_KEY            || vars.VITE_FIREBASE_API_KEY }}
+      VITE_FIREBASE_AUTH_DOMAIN:        ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN        || vars.VITE_FIREBASE_AUTH_DOMAIN }}
+      VITE_FIREBASE_PROJECT_ID:         ${{ secrets.VITE_FIREBASE_PROJECT_ID         || vars.VITE_FIREBASE_PROJECT_ID }}
+      VITE_FIREBASE_STORAGE_BUCKET:     ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET     || vars.VITE_FIREBASE_STORAGE_BUCKET }}
+      VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+      VITE_FIREBASE_APP_ID:             ${{ secrets.VITE_FIREBASE_APP_ID             || vars.VITE_FIREBASE_APP_ID }}
+      VITE_FIREBASE_MEASUREMENT_ID:     ${{ secrets.VITE_FIREBASE_MEASUREMENT_ID     || vars.VITE_FIREBASE_MEASUREMENT_ID }}
+      VITE_APP_SECRET:                  ${{ secrets.VITE_APP_SECRET                  || vars.VITE_APP_SECRET }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential g++ \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libarchive-tools \
+            ruby ruby-dev \
+            zstd \
+            libnotify-dev
+
+      - name: Configure AppImage bundler
+        run: echo 'APPIMAGE_EXTRACT_AND_RUN=1' >> "$GITHUB_ENV"
+
+      - run: npm ci
+
+      - name: Install FPM
+        run: sudo gem install --no-document fpm --version 1.15.1
+
+      - name: Generate .env for Vite build
+        run: |
+          cat << 'EOF' > .env
+          VITE_FIREBASE_API_KEY=${{ env.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN=${{ env.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID=${{ env.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET=${{ env.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID=${{ env.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID=${{ env.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_MEASUREMENT_ID=${{ env.VITE_FIREBASE_MEASUREMENT_ID }}
+          VITE_APP_SECRET=${{ env.VITE_APP_SECRET }}
+          EOF
+
+      - name: Verify Firebase config is present
+        run: |
+          if grep -q 'VITE_FIREBASE_API_KEY=$' .env; then
+            echo "ERROR: VITE_FIREBASE_API_KEY is empty. Pastikan secret/variable sudah diset di GitHub repository."
+            exit 1
+          fi
+          echo "Firebase config OK"
+
+      - name: Build Linux packages (AppImage + deb)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: app-v__VERSION__
+          releaseName: Jadhuman v__VERSION__
+          releaseBody: Built automatically by GitHub Actions.
+          releaseDraft: true
+          prerelease: false
+          args: '--bundles appimage,deb'
+
+      - name: Package Arch Linux archive (.pkg.tar.zst)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ZSTD_CLEVEL: '19'
+        run: |
+          set -euo pipefail
+
+          deb_file="$(find src-tauri/target/release/bundle/deb -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          if [[ -z "${deb_file}" ]]; then
+            echo "ERROR: Tauri did not produce a .deb package."
+            exit 1
+          fi
+          echo "Found deb: ${deb_file}"
+
+          app_version="$(node -e "console.log(JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json', 'utf8')).version)")"
+          package_file="${RUNNER_TEMP}/jadhuman-${app_version}-1-x86_64.pkg.tar.zst"
+
+          fpm -s deb -t pacman \
+            --name jadhuman \
+            --version "${app_version}" \
+            --iteration 1 \
+            --architecture x86_64 \
+            --description "Jadhuman — Portal Presensi Jawa Timur" \
+            --url "https://github.com/jadhuman" \
+            --license custom \
+            --no-auto-depends \
+            --depends gtk3 \
+            --depends webkit2gtk-4.1 \
+            --depends openssl \
+            --depends libnotify \
+            --package "${package_file}" \
+            "${deb_file}"
+
+          test -s "${package_file}"
+          file "${package_file}" | grep -qi 'Zstandard compressed'
+          echo "pkg.tar.zst OK: ${package_file}"
+
+          gh release upload "app-v${app_version}" "${package_file}" --clobber

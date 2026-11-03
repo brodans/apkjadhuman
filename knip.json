@@ -1,0 +1,18 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "api/*.ts",
+    "tools/**/*.mts"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx}",
+    "api/**/*.ts",
+    "tools/**/*.mts"
+  ],
+  "ignoreExportsUsedInFile": true,
+  "ignoreIssues": {
+    "src/data/data_instansi.ts": ["exports"],
+    "src/data/data_pegawai.ts": ["exports"],
+    "src/data/data_unor.ts": ["exports"]
+  }
+}

@@ -1,0 +1,471 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-slate-850: #162032;
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+@layer base {
+  /* ─── Anti-zoom & Stable Layout ─────────────────────────────────── */
+  html {
+    -webkit-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    height: -webkit-fill-available;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    touch-action: pan-x pan-y;
+    overscroll-behavior: none;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    /* Hilangkan highlight biru saat tap di mobile */
+    -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
+  }
+
+  /* Box-sizing global */
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  /* Ring Aksesibilitas Terpusat */
+  :focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+  }
+
+  /* Root container full viewport */
+  #root {
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  /* ─── Text Selection — terlihat jelas di light & dark mode ──────── */
+  /* Tanpa rule ini, Android WebView pakai warna selection default yang
+     bisa tampil hitam pekat dan tidak terlihat di dark background.    */
+  ::selection {
+    background-color: rgba(59, 130, 246, 0.35); /* blue-500/35 */
+    color: inherit;
+  }
+  .dark ::selection {
+    background-color: rgba(96, 165, 250, 0.40); /* blue-400/40 */
+    color: inherit;
+  }
+  /* Untuk WebKit (Android/iOS) */
+  ::-moz-selection {
+    background-color: rgba(59, 130, 246, 0.35);
+    color: inherit;
+  }
+  .dark ::-moz-selection {
+    background-color: rgba(96, 165, 250, 0.40);
+    color: inherit;
+  }
+}
+
+/* ─── Skeleton Loading Shimmer ────────────────────────────────────── */
+
+/* ─── Skeleton Loading Shimmer ────────────────────────────────────── */
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.skeleton-shimmer::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.15), transparent);
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ─── Sleek Scrollbar (hanya pada elemen yang benar-benar scroll) ─── */
+/* JANGAN pakai * global — bikin double scrollbar di Android WebView  */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: rgba(203, 213, 225, 0.6);
+  border-radius: 9999px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background-color: rgba(71, 85, 105, 0.6);
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background-color: #64748b;
+}
+
+/* Firefox — hanya berlaku pada elemen dengan overflow */
+.custom-scrollbar,
+.konten-gulir,
+.poni-sidebar nav {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(203, 213, 225, 0.6) transparent;
+}
+.dark .custom-scrollbar,
+.dark .konten-gulir,
+.dark .poni-sidebar nav {
+  scrollbar-color: rgba(71, 85, 105, 0.6) transparent;
+}
+
+.login-grid-mask {
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 20%, transparent 100%);
+  mask-image: radial-gradient(ellipse at center, #000 20%, transparent 100%);
+}
+
+/* Custom Scrollbar Helper untuk Modal Body */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 9999px;
+}
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #475569;
+}
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+  background-color: #94a3b8;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ─── Animations & Keyframes ──────────────────────────────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spin 3s linear infinite;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes popIn {
+  0% { opacity: 0; transform: scale(0.92); }
+  50% { opacity: 1; transform: scale(1.02); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out forwards;
+}
+
+.animate-pop-in {
+  animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ─── Modal Layer & Workspace Integration ────────────────────────── */
+.modal-layer {
+  right: var(--dev-panel-right-offset, 0px) !important;
+}
+
+.account-modal-layer {
+  right: 0 !important;
+}
+
+.developer-inspector-layer {
+  isolation: isolate;
+}
+
+.pdf-text-layer {
+  --text-scale-factor: calc(var(--scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+  text-align: initial;
+  transform-origin: 0 0;
+  z-index: 1;
+}
+
+.pdf-text-layer span {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.developer-inspector-payload {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+/* ─── Custom File Input Styling ───────────────────────────────────── */
+input[type="file"].custom-file-input::-webkit-file-upload-button {
+  visibility: hidden;
+}
+input[type="file"].custom-file-input::before {
+  content: 'Pilih File Excel';
+  display: inline-block;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  outline: none;
+  white-space: nowrap;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  transition: background-color 0.2s ease;
+}
+input[type="file"].custom-file-input:hover::before {
+  background: #1d4ed8;
+}
+
+@layer base {
+  :root {
+    --sat: env(safe-area-inset-top, 24px);
+    --sab: env(safe-area-inset-bottom, 24px);
+    --poni-kiri: env(safe-area-inset-left, 0px);
+    --poni-kanan: env(safe-area-inset-right, 0px);
+    --poni-atas: var(--sat);
+    --poni-bawah: var(--sab);
+  }
+
+  body.is-native {
+    --bottom-sheet-safe-area: var(--sab);
+  }
+
+  body.is-native .poni-sidebar .custom-scrollbar {
+    scrollbar-color: rgb(71 85 105) transparent;
+  }
+
+  body.is-native .poni-sidebar .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgb(71 85 105);
+  }
+
+  body.is-native .poni-sidebar .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+    background-color: rgb(100 116 139);
+  }
+}
+
+@layer components {
+  body.is-native .poni-workspace {
+    height: 100dvh !important;
+    min-height: 0 !important;
+  }
+
+  body.is-native .poni-workspace::after {
+    content: '';
+    position: absolute;
+    z-index: 39;
+    inset-inline: 0;
+    bottom: 0;
+    height: max(1.5rem, var(--sab));
+    background: inherit;
+    pointer-events: none;
+  }
+
+  body.is-native .poni-header {
+    height: calc(56px + var(--sat)) !important;
+    min-height: calc(56px + var(--sat)) !important;
+    padding-top: var(--sat) !important;
+    padding-left: max(1rem, var(--poni-kiri)) !important;
+    padding-right: max(1rem, var(--poni-kanan)) !important;
+    box-sizing: border-box !important;
+  }
+
+  body.is-native .poni-sidebar {
+    top: calc(var(--sat) + 0.5rem) !important;
+    height: calc(100dvh - var(--sat) - var(--sab) - 0.5rem) !important;
+    max-height: calc(100dvh - var(--sat) - var(--sab) - 0.5rem) !important;
+    margin: 0 !important;
+    border: 1px solid rgb(255 255 255 / 0.08) !important;
+    border-left: 0 !important;
+    border-top: 1px solid rgb(255 255 255 / 0.08) !important;
+    border-bottom: 1px solid rgb(255 255 255 / 0.08) !important;
+    border-radius: 0 1.25rem 1.25rem 0 !important;
+    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.35), 0 10px 10px -5px rgb(0 0 0 / 0.2) !important;
+  }
+
+  body.is-native .poni-sidebar > div:first-child {
+    border-top-right-radius: 1.25rem !important;
+  }
+
+  body.is-native .poni-sidebar > div:last-child {
+    border-bottom-right-radius: 1.25rem !important;
+    padding-bottom: 1rem !important;
+  }
+
+  body.is-native .poni-sidebar button.absolute.-right-3\.5 {
+    top: calc(var(--sat) + 2rem) !important;
+  }
+
+  body.is-native .konten-gulir {
+    padding-bottom: max(1.75rem, var(--sab)) !important;
+  }
+
+  body.is-native .poni-konten {
+    padding-top: 1.25rem !important;
+    padding-right: max(1rem, var(--poni-kanan)) !important;
+    padding-bottom: 1.25rem !important;
+    padding-left: max(1rem, var(--poni-kiri)) !important;
+    box-sizing: border-box !important;
+  }
+
+  body.is-native .fixed.bottom-0 {
+    bottom: var(--sab) !important;
+  }
+
+  body.is-native .fixed.bottom-4 {
+    bottom: calc(var(--sab) + 1rem) !important;
+  }
+
+  body.is-native .login-screen {
+    top: var(--login-viewport-top, 0px);
+    height: var(--login-viewport-height, 100dvh);
+    min-height: var(--login-viewport-height, 100dvh);
+    max-height: var(--login-viewport-height, 100dvh);
+    padding: max(1rem, var(--sat)) max(1rem, var(--poni-kanan)) max(1rem, var(--sab)) max(1rem, var(--poni-kiri));
+    align-items: safe center;
+    overflow-y: auto;
+    box-sizing: border-box;
+    scroll-padding-top: calc(var(--sat) + 1rem);
+  }
+
+  body.is-native .login-screen.login-keyboard-open {
+    align-items: safe center !important;
+    justify-content: safe center !important;
+  }
+
+  body.is-native .login-screen.login-keyboard-open .login-card.translate-y-2 {
+    transform: translateY(0.5rem);
+  }
+
+  body.is-native .login-theme-toggle {
+    top: calc(var(--sat) + 1rem) !important;
+    right: calc(var(--poni-kanan) + 1rem) !important;
+  }
+
+  body.is-native .login-screen.login-keyboard-open .login-theme-toggle button {
+    padding: 0.625rem !important;
+  }
+
+  body.is-native .modal-layer {
+    padding-top: max(1rem, var(--poni-atas, var(--sat)));
+    padding-right: max(1rem, var(--poni-kanan));
+    padding-bottom: max(1rem, var(--poni-bawah, var(--sab)));
+    padding-left: max(1rem, var(--poni-kiri));
+  }
+
+  body.is-native .account-modal-layer {
+    padding-top: max(1rem, var(--poni-atas, var(--sat)));
+    padding-right: max(1rem, var(--poni-kanan));
+    padding-bottom: max(1rem, var(--poni-bawah, var(--sab)));
+    padding-left: max(1rem, var(--poni-kiri));
+  }
+
+  body.is-native .report-modal-overlay.is-fullscreen {
+    padding: 0 !important;
+  }
+
+  body.is-native .report-viewer-panel-fullscreen {
+    padding-top: var(--poni-atas, var(--sat));
+    padding-right: var(--poni-kanan);
+    padding-bottom: var(--poni-bawah, var(--sab));
+    padding-left: var(--poni-kiri);
+  }
+
+  body.is-native .image-lightbox img {
+    max-height: calc(100dvh - var(--poni-atas, var(--sat)) - var(--poni-bawah, var(--sab)) - 10rem);
+  }
+
+  body.is-native .developer-inspector-fab {
+    right: max(1rem, var(--poni-kanan)) !important;
+  }
+
+  body.is-native .developer-inspector-drawer {
+    padding-top: var(--poni-atas, var(--sat));
+    padding-right: var(--poni-kanan);
+    padding-bottom: var(--poni-bawah, var(--sab));
+    padding-left: var(--poni-kiri);
+  }
+
+  body.is-native .developer-inspector-drawer .absolute.bottom-4 {
+    bottom: max(1rem, var(--poni-bawah, var(--sab))) !important;
+  }
+
+  @media (min-width: 640px) {
+    body.is-native .poni-header {
+      padding-right: max(1.5rem, var(--poni-kanan)) !important;
+      padding-left: max(1.5rem, var(--poni-kiri)) !important;
+    }
+
+    body.is-native .poni-konten {
+      padding-top: 1.5rem !important;
+      padding-right: max(1.5rem, var(--poni-kanan)) !important;
+      padding-bottom: 1.5rem !important;
+      padding-left: max(1.5rem, var(--poni-kiri)) !important;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    body.is-native .poni-sidebar {
+      position: relative !important;
+      top: auto !important;
+      height: 100% !important;
+      max-height: 100% !important;
+      border-radius: 0 1.25rem 1.25rem 0 !important;
+    }
+
+    body.is-native .poni-konten {
+      padding-top: 1.75rem !important;
+      padding-right: max(2rem, var(--poni-kanan)) !important;
+      padding-bottom: 1.75rem !important;
+      padding-left: max(2rem, var(--poni-kiri)) !important;
+    }
+  }
+}

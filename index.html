@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="id" class="light">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- viewport: disable zoom & pinch agar layout stabil di semua device -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Jadhuman</title>
+
+    <!-- ─── Favicon ─────────────────────────────────────── -->
+    <link rel="shortcut icon" href="/assets/favicon.ico" type="image/x-icon" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/icon-16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/icon-32.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/assets/icon-48.png" />
+
+    <!-- ─── PWA Manifest ────────────────────────────────── -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- ─── Theme color (diupdate oleh JS saat toggle dark mode) ── -->
+    <meta name="theme-color" id="theme-color-meta" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)"  content="#020617" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+
+    <!-- ─── iOS / Apple PWA ─────────────────────────────── -->
+    <!-- apple-touch-icon: ikon saat "Add to Home Screen" di iOS -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png" />
+    <!-- Aktifkan mode standalone di iOS (tidak ada browser chrome) -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- Status bar style: default=putih, black=hitam, black-translucent=transparan -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- Judul yang tampil di layar Home iOS -->
+    <meta name="apple-mobile-web-app-title" content="Jadhuman" />
+
+    <!-- ─── Android / General PWA ───────────────────────── -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="Jadhuman" />
+
+    <!-- ─── SEO / Social ────────────────────────────────── -->
+    <meta name="description" content="Jaringan Administrasi dan Manajemen Absensi - Panel Web" />
+    <meta name="robots" content="noindex, nofollow" />
+
+    <!-- ─── Google Fonts ────────────────────────────────── -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,500&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+    <style>
+      :root { --sat: env(safe-area-inset-top, 24px); --sab: env(safe-area-inset-bottom, 24px); --safe-area-inset-top: var(--sat); --safe-area-inset-bottom: var(--sab); --poni-atas: var(--sat); --poni-bawah: var(--sab); --poni-kiri: env(safe-area-inset-left, 0px); --poni-kanan: env(safe-area-inset-right, 0px); }
+      #boot-splash { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: max(1.5rem, var(--poni-atas)) max(1.5rem, var(--poni-kanan)) max(1.5rem, var(--poni-bawah)) max(1.5rem, var(--poni-kiri)); background: #F8FAFC; color: #0F172A; transition: opacity .24s ease, visibility 0s linear .24s; }
+      .dark #boot-splash { background: #0B1120; color: #E2E8F0; }
+      .boot-splash-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+      .boot-splash-body { display: flex; flex-direction: column; align-items: center; text-align: center; }
+      .boot-splash-logo { display: grid; width: 5rem; height: 5rem; place-items: center; overflow: hidden; border: 1px solid #E2E8F0; border-radius: 1.25rem; background: #fff; padding: .5rem; }
+      .dark .boot-splash-logo { border-color: #334155; background: #0F172A; }
+      .boot-splash-logo img { width: 100%; height: 100%; object-fit: contain; }
+      .boot-splash-name { margin-top: 1.25rem; font: 800 1.125rem/1.4 'Plus Jakarta Sans', ui-sans-serif, sans-serif; }
+      .boot-splash-subtitle { margin-top: .25rem; color: #64748B; font: 500 .8125rem/1.5 'Plus Jakarta Sans', ui-sans-serif, sans-serif; }
+      .dark .boot-splash-subtitle { color: #94A3B8; }
+      .boot-splash-track { width: 7rem; height: 3px; margin-top: 1.75rem; overflow: hidden; border-radius: 9999px; background: #DBEAFE; }
+      .dark .boot-splash-track { background: #1E293B; }
+      .boot-splash-track::after { content: ''; display: block; width: 40%; height: 100%; border-radius: inherit; background: #2563EB; animation: boot-progress 1s ease-in-out infinite alternate; }
+      .dark .boot-splash-track::after { background: #60A5FA; }
+      @keyframes boot-progress { from { transform: translateX(0); } to { transform: translateX(150%); } }
+      @media (prefers-reduced-motion: reduce) { .boot-splash-track::after { animation-duration: 2s; } }
+    </style>
+  </head>
+  <body>
+    <!-- Match the first paint to the system theme before IndexedDB is ready. -->
+    <script>
+      (function() {
+        try {
+          var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          window.__JADHUMAN_SAFE_AREA_REQUIRED__ = Boolean(window.__TAURI_INTERNALS__ && /Android/i.test(navigator.userAgent));
+          document.documentElement.classList.toggle('dark', dark);
+          document.documentElement.classList.toggle('is-native', Boolean(window.__TAURI_INTERNALS__));
+          document.body.style.background = dark ? '#0B1120' : '#F8FAFC';
+          var metaTheme = document.getElementById('theme-color-meta');
+          if (metaTheme) metaTheme.setAttribute('content', dark ? '#0B1120' : '#F8FAFC');
+        } catch(e) {}
+      })();
+    </script>
+    <div id="boot-splash" role="status" aria-label="Memuat Jadhuman">
+      <div class="boot-splash-body">
+        <div class="boot-splash-logo"><img src="/assets/icon-192.png" alt="" /></div>
+        <div class="boot-splash-name">JADHUMAN</div>
+        <div class="boot-splash-subtitle">AYO JADHUM REK</div>
+        <div class="boot-splash-track" aria-hidden="true"></div>
+      </div>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
