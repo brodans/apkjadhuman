@@ -5,9 +5,8 @@
 //         absolute + opacity:0 — cara paling reliable di semua WebView & browser.
 // Simpan: IndexedDB via onTambah prop.
 // Decode: universal — native browser, heic2any (WASM) untuk HEIC/HEIF,
-//         UTIF untuk TIFF/DNG (lihat src/lib/universalImage.ts).
-// Suntik EXIF: DIBACA dari pengaturan terpusat appStorage (Pengaturan Jadhuman
-//         → kartu "Suntik EXIF — Preset Automasi").
+//         UTIF untuk TIFF (lihat src/lib/universalImage.ts).
+// Metadata sumber tidak disalin; foto didecode lalu disimpan sebagai JPEG kecil.
 // Konfirmasi hapus: inline, tidak pakai fixed/portal agar tidak ada double scroll.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -16,10 +15,9 @@ import {
   ImageIcon, Plus, Trash2, X, AlertTriangle, Loader2,
 } from 'lucide-react';
 import {
-  sniffImageKind, decodeImageUniversal, scaleCanvasMaxSide, canvasToJpeg,
+  isProbablyImageFile, sniffImageKind, decodeImageUniversal, scaleCanvasMaxSide, canvasToJpeg,
 } from '../../lib/universalImage';
-import { getExifSuntik, applyExifFinal } from '../../lib/exifSuntik';
-import { StockFoto, MAX_STOCK_FOTO } from '../../lib/presetAutomasi';
+import { StockFoto, MAX_STOCK_FOTO, notifyPresetUpdated } from '../../lib/presetAutomasi';
 import ImageLightbox from './ImageLightbox';
 
 const LONG_SIDE = 320;
@@ -30,19 +28,10 @@ async function processFoto(
   file: File,
 ): Promise<{ dataUrl: string; w: number; h: number; sizeOri: number; err?: string }> {
   const sizeOri = file.size;
+  if (!isProbablyImageFile(file)) {
+    return { dataUrl: '', w: 0, h: 0, sizeOri, err: 'Format RAW tidak didukung. Pilih JPG, PNG, atau format gambar umum.' };
+  }
   const kind = await sniffImageKind(file);
-
-  // Byte asli hanya dibaca untuk JPEG (EXIF passthrough) — paralel dengan decode
-  const bytesP = kind === 'jpeg'
-    ? new Promise<Uint8Array | null>(res => {
-        try {
-          const r = new FileReader();
-          r.onerror = () => res(null);
-          r.onload = () => res(new Uint8Array(r.result as ArrayBuffer));
-          r.readAsArrayBuffer(file);
-        } catch { res(null); }
-      })
-    : Promise.resolve<Uint8Array | null>(null);
 
   let decoded: HTMLCanvasElement;
   try {
@@ -66,15 +55,7 @@ async function processFoto(
     return { dataUrl: '', w: 0, h: 0, sizeOri, err: e?.message || 'Gagal mengencode JPEG.' };
   }
 
-  const bytes = await bytesP;
-  const finalUrl = applyExifFinal(rawUrl, {
-    sourceBytes: bytes,
-    inject: getExifSuntik('preset'),
-    stripThumbnail: false,
-    width: outW,
-    height: outH,
-  });
-  return { dataUrl: finalUrl, w: outW, h: outH, sizeOri };
+  return { dataUrl: rawUrl, w: outW, h: outH, sizeOri };
 }
 
 // ─── Tombol upload dengan input file tertindih langsung ───────────────────────
@@ -100,7 +81,7 @@ function UploadZone({ disabled, uploading, children, className, onFiles }: Uploa
       {/* Input file menumpuk penuh di atas children — opacity 0, klik menembus */}
       <input
         type="file"
-        accept="image/*,.heic,.heif,.tif,.tiff,.dng,.bmp,.ico,.avif,.jxl"
+        accept="image/*,.heic,.heif,.tif,.tiff,.bmp,.ico,.avif,.jxl"
         multiple
         disabled={disabled || uploading}
         onChange={e => {
@@ -153,6 +134,7 @@ export default function StockFotoManager({
     if (!arr.length) return;
     setUploadErrors([]); setUploading(true); setProgress({done:0,total:arr.length});
     const errs: string[] = [];
+    let changed = false;
     let done=0;
     for (const file of arr) {
       try {
@@ -160,20 +142,30 @@ export default function StockFotoManager({
         if (!r.dataUrl) { errs.push(`${file.name}: ${r.err||'Gagal'}`); }
         else {
           const nama = file.name.replace(/\.[^.]+$/,'').slice(0,60)||`Foto ${Date.now()}`;
-          await onTambah({nama, dataUrl:r.dataUrl, ukuranAsli:r.sizeOri, lebarPx:r.w, tinggiPx:r.h});
+          const foto = await onTambah({nama, dataUrl:r.dataUrl, ukuranAsli:r.sizeOri, lebarPx:r.w, tinggiPx:r.h});
+          changed ||= !!foto;
         }
       } catch(e:any) { errs.push(`${file.name}: ${e?.message||'Error'}`); }
       done++; setProgress({done, total:arr.length});
     }
     setUploading(false); setProgress(null);
     if (errs.length) setUploadErrors(errs);
+    if (changed) notifyPresetUpdated();
   };
 
-  const hapusSatu = async (id: string) => { await onHapus(id); setHapusTarget(null); };
+  const hapusSatu = async (id: string) => {
+    await onHapus(id);
+    setHapusTarget(null);
+    notifyPresetUpdated();
+  };
   const hapusSemua = async () => {
     setHapusBerjalan(true);
-    for (const f of fotos) { try { await onHapus(f.id); } catch {/**/} }
+    let changed = false;
+    for (const f of fotos) {
+      try { await onHapus(f.id); changed = true; } catch {/**/}
+    }
     setHapusBerjalan(false); setHapusSemuaOpen(false);
+    if (changed) notifyPresetUpdated();
   };
   const toggleSelect = (id: string) => {
     if (!onSelect) return;

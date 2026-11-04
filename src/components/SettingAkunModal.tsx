@@ -31,10 +31,6 @@ import {
 import { db } from '../lib/firebase';
 import { useAppContext } from '../context/AppContext';
 import { useBackButton } from '../hooks/useBackButton';
-import ExifSuntikPanel from './ui/ExifSuntikPanel';
-import {
-  getExifSuntik, setExifSuntik, type ExifSuntikTarget, type ExifSuntikConfig,
-} from '../lib/exifSuntik';
 import {
   fetchAllUsers,
   createUserAccount,
@@ -571,17 +567,6 @@ export default function SettingAkunModal({ onClose }: SettingAkunModalProps) {
   const [activeTab, setActiveTab] = useState<ModalTab>('pengaturan');
   const [openSection, setOpenSection] = useState<CredSection>('none');
 
-  // Konfigurasi Suntik EXIF (tersimpan di appStorage — terpusat untuk semua fitur)
-  const [exifPreset, setExifPreset] = useState<ExifSuntikConfig>(() => getExifSuntik('preset'));
-  const [exifPresensi, setExifPresensi] = useState<ExifSuntikConfig>(() => getExifSuntik('presensi'));
-  const [exifProduktivitas, setExifProduktivitas] = useState<ExifSuntikConfig>(() => getExifSuntik('produktivitas'));
-  const updateExif = (target: ExifSuntikTarget) => (cfg: ExifSuntikConfig) => {
-    setExifSuntik(target, cfg);
-    if (target === 'preset') setExifPreset(cfg);
-    else if (target === 'presensi') setExifPresensi(cfg);
-    else setExifProduktivitas(cfg);
-  };
-
   useBackButton(() => {
     if (openSection !== 'none') {
       setOpenSection('none');
@@ -857,21 +842,6 @@ export default function SettingAkunModal({ onClose }: SettingAkunModalProps) {
                     }`}
                   />
                 </button>
-              </div>
-
-              {/* Suntik EXIF — terpusat untuk semua fitur */}
-              <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200/80 dark:border-slate-700/60 rounded-2xl space-y-2.5 shadow-sm">
-                <div>
-                  <span className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                    🔧 Suntik EXIF
-                  </span>
-                  <span className="text-xs text-slate-400 dark:text-slate-500 block mt-0.5">
-                    Sematkan metadata Make / Model / Software kamera palsu ke foto (hanya bila foto sumber tak punya EXIF). Pengaturan terpisah untuk tiap fitur.
-                  </span>
-                </div>
-                <ExifSuntikPanel target="preset" config={exifPreset} onChange={updateExif('preset')} />
-                <ExifSuntikPanel target="presensi" config={exifPresensi} onChange={updateExif('presensi')} />
-                <ExifSuntikPanel target="produktivitas" config={exifProduktivitas} onChange={updateExif('produktivitas')} />
               </div>
 
               {/* Datepicker Style Card */}

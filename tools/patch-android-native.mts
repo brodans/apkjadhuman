@@ -503,10 +503,13 @@ class MainActivity : TauriActivity() {
      * JSON: PresetSyncData[] — lihat src/lib/androidNativeBridge.ts
      */
     @JavascriptInterface
-    fun syncPresets(json: String) {
+    fun syncPresets(json: String, photosJson: String) {
       try {
         getSharedPreferences("jadhuman_presets", android.content.Context.MODE_PRIVATE)
-          .edit().putString("presets_json", json).apply()
+          .edit()
+          .putString("presets_json", json)
+          .putString("photos_json", photosJson)
+          .apply()
       } catch (_: Exception) {}
     }
 
@@ -1055,14 +1058,14 @@ import java.util.concurrent.TimeUnit
  * JadhumanKeepaliveWorker — Worker periodik 15 menit via WorkManager.
  *
  * Berjalan BAHKAN saat app di-swipe dari Recent Apps (WebView sudah di-kill).
- * Membaca session & preset dari SharedPreferences (ditulis oleh JS bridge di
+ * Membaca session, preset, dan foto stock dari SharedPreferences (ditulis oleh JS bridge di
  * MainActivity.kt via syncSession()/syncPresets()), lalu eksekusi presensi
  * langsung via HTTP tanpa WebView.
  *
  * SharedPreferences yang dipakai:
  *   "jadhuman_automasi"    → penjadwal_aktif (Boolean)
  *   "jadhuman_session"     → session_json (JSON: credentials server presensi)
- *   "jadhuman_presets"     → presets_json (JSON: array preset aktif + jadwal)
+ *   "jadhuman_presets"     → presets_json + photos_json (jadwal dan map ID foto ke Base64 JPEG)
  *   "jadhuman_worker_log"  → log_json (hasil eksekusi, dibaca kembali oleh JS)
  */
 class JadhumanKeepaliveWorker(
@@ -1151,6 +1154,9 @@ class JadhumanKeepaliveWorker(
         val presetsJson = ctx.getSharedPreferences("jadhuman_presets", Context.MODE_PRIVATE)
             .getString("presets_json", null) ?: return
         val presets = JSONArray(presetsJson)
+        val stockPhotosJson = ctx.getSharedPreferences("jadhuman_presets", Context.MODE_PRIVATE)
+          .getString("photos_json", "{}") ?: "{}"
+        val stockPhotos = try { JSONObject(stockPhotosJson) } catch (_: Exception) { JSONObject() }
 
         val wib = TimeZone.getTimeZone("Asia/Jakarta")
         val now = Calendar.getInstance(wib)
@@ -1180,8 +1186,22 @@ class JadhumanKeepaliveWorker(
             val presetId = preset.optString("id")
             if (sudahEksekusiHariIni(presetId, tanggal)) continue
 
+            // Retry selalu memakai foto yang sama; indeks maju hanya setelah request berhasil.
+            val fotoIds = preset.optJSONArray("stockFotoIds") ?: JSONArray()
+            val indexKey = "foto_index_\$presetId"
+            val workerState = ctx.getSharedPreferences("jadhuman_worker_state", Context.MODE_PRIVATE)
+            val fotoIndex = if (fotoIds.length() > 0) {
+              val savedIndex = workerState.getInt(indexKey, 0)
+              ((savedIndex % fotoIds.length()) + fotoIds.length()) % fotoIds.length()
+            } else 0
+            val fotoId = fotoIds.optString(fotoIndex)
+            val lampiran = stockPhotos.optString(fotoId, "")
+
             // Eksekusi HTTP
-            val (berhasil, pesan) = kirimAbsen(
+            val (berhasil, pesan) = if (lampiran.isBlank()) {
+              Pair(false, "Stock foto preset belum tersinkron atau kosong.")
+            } else {
+              kirimAbsen(
                 baseUrl      = baseUrl,
                 tanggal      = tanggalDisplay,
                 idPegawai    = idPegawai,
@@ -1193,7 +1213,12 @@ class JadhumanKeepaliveWorker(
                 kodeUnor     = kodeUnor,
                 workMode     = workMode,
                 versi        = versi,
-            )
+                lampiran     = lampiran,
+              )
+            }
+            if (berhasil && fotoIds.length() > 0) {
+              workerState.edit().putInt(indexKey, (fotoIndex + 1) % fotoIds.length()).apply()
+            }
 
             // Tulis log (untuk dibaca kembali oleh JS via readWorkerLog())
             tulisLog(
@@ -1216,8 +1241,8 @@ class JadhumanKeepaliveWorker(
 
     /**
      * Kirim presensi via HTTP POST form-urlencoded.
-     * Payload identik dengan yang dikirim frontend JS via sendRequest('/login/absen_mobile', ...).
-     * Worker tidak bisa kirim foto (tidak ada IndexedDB), tapi request tetap diterima server.
+    * Payload identik dengan yang dikirim frontend JS via sendRequest('/login/absen_mobile', ...).
+    * Lampiran berupa Base64 JPEG dari stock foto yang disinkronkan sebelum WebView tidur.
      */
     private fun kirimAbsen(
         baseUrl: String,
@@ -1231,12 +1256,14 @@ class JadhumanKeepaliveWorker(
         kodeUnor: String,
         workMode: String,
         versi: String,
+        lampiran: String,
     ): Pair<Boolean, String> {
         return try {
             fun enc(s: String) = java.net.URLEncoder.encode(s, "UTF-8")
             val params = buildString {
                 append("tanggal=\${enc(tanggal)}")
                 append("&keterangan=\${enc("Presensi Reguler")}")
+                append("&lampiran=\${enc(lampiran)}")
                 append("&sim_serial=\${enc(deviceId)}")
                 append("&lattitude=\${enc(latitude)}")   // sic — typo di API server
                 append("&longitude=\${enc(longitude)}")

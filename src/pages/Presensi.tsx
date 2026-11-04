@@ -9,9 +9,9 @@ import { usePegawaiSearch } from '../hooks/usePegawaiSearch';
 import { getTodayWIB } from '../lib/dateFormatter';
 import { loadPegawaiDatabase, toPegawaiSearchList } from '../lib/pegawaiData';
 import { dataLokasi } from '../data/data_lokasi';
-import { downscaleTo } from '../lib/exif';
-import { isProbablyImageFile, sniffImageKind, decodeImageUniversal } from '../lib/universalImage';
-import { applyExifFinal, getExifSuntik } from '../lib/exifSuntik';
+import {
+  isProbablyImageFile, sniffImageKind, decodeImageUniversal, scaleCanvasMaxSide,
+} from '../lib/universalImage';
 
 // Helper function to find matching location in dataLokasi
 function findMatchingLocation(pegawai: any, locations: any[]) {
@@ -301,44 +301,23 @@ export default function Presensi() {
   };
 
   // ── Kompresi foto presensi (meniru APK asli bkpsdm_presensi_ponorogo) ──────
-  // APK asli memakai komponen kamera bawaan (plugin `camera`) dengan preset
-  // resolusi RENDAH → hasil ± 320×240 (tampil 240×320 saat potret), lalu foto
-  // di-upload APA ADANYA (raw camera JPEG: SELURUH EXIF + thumbnail tetap ada).
-  // Karena itu rasio aspek tetap terjaga dan metadata tidak pernah hilang.
-  //
-  // Di web: semua format gambar didukung (JPEG/PNG/WebP/GIF/BMP/SVG/HEIC/TIFF/
-  // AVIF/JXL — lihat src/lib/universalImage.ts). Piksel di-decode lalu
-  // di-perkecil sampai sisi terpanjang 320 px dan EXIF sumber (bila JPEG)
-  // dipertahankan, dinormalkan orientasinya, dimensinya diperbarui.
-  // Bila pengguna mengaktifkan "Suntik EXIF — Presensi" di Pengaturan Jadhuman
-  // dan sumber TIDAK punya EXIF, foto disuntik EXIF Make/Model/Software.
+  // Decode semua format gambar, normalisasi orientasi pada piksel, lalu kecilkan
+  // ke 320 px. Metadata sumber tidak dibaca atau disalin ke JPEG upload.
   const PRESENSI_LONG_SIDE = 320;
 
-  const encodePresensi = (canvas: HTMLCanvasElement, sourceBytes: Uint8Array | null) => {
+  const encodePresensi = (canvas: HTMLCanvasElement) => {
     const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
     if (dataUrl.length < 100) {
       // "data:," → encoder kanvas gagal.
       setFileInfo('❌ Gagal memproses foto.');
       return;
     }
-    const finalUrl = applyExifFinal(dataUrl, {
-      sourceBytes,
-      inject: getExifSuntik('presensi'),
-      stripThumbnail: false,
-      width: canvas.width,
-      height: canvas.height,
-    });
-    const byteLength = Math.round((finalUrl.length * 3) / 4);
-    setBase64Image(finalUrl);
+    const byteLength = Math.round((dataUrl.length * 3) / 4);
+    setBase64Image(dataUrl);
     setFileInfo(`${canvas.width}×${canvas.height} px · ${(byteLength / 1024).toFixed(1)} KB`);
   };
 
   const processFile = (file: File) => {
-    if (!isProbablyImageFile(file)) {
-      alert('Pilih file gambar!');
-      return;
-    }
-
     setFileInfo('🔄 Memproses & kompresi foto...');
     setBase64Image('');
     setOutput(null);
@@ -346,21 +325,18 @@ export default function Presensi() {
     void (async () => {
       try {
         const kind = await sniffImageKind(file);
-        // Byte lengkap hanya perlu untuk JPEG (EXIF passthrough)
-        const bytes = kind === 'jpeg'
-          ? new Uint8Array(await file.arrayBuffer())
-          : null;
+        if (kind === 'unknown' && !isProbablyImageFile(file)) {
+          setFileInfo('❌ File gambar tidak dikenali.');
+          return;
+        }
         const source = await decodeImageUniversal(file, kind);
         const srcW = source.width, srcH = source.height;
         if (!srcW || !srcH) {
           setFileInfo('❌ Gagal memproses foto.');
           return;
         }
-        const scale = Math.min(1, PRESENSI_LONG_SIDE / Math.max(srcW, srcH));
-        const outW = Math.max(1, Math.round(srcW * scale));
-        const outH = Math.max(1, Math.round(srcH * scale));
-        const canvas = downscaleTo(source, srcW, srcH, outW, outH);
-        encodePresensi(canvas, bytes);
+        const canvas = scaleCanvasMaxSide(source, PRESENSI_LONG_SIDE).canvas;
+        encodePresensi(canvas);
       } catch (err: any) {
         console.error('Gagal memproses foto:', err);
         setFileInfo(`❌ ${err?.message || 'Foto tidak bisa dibaca.'}`);
@@ -455,11 +431,18 @@ export default function Presensi() {
     const targetDeviceId = selectedTargetPegawai
       ? (selectedTargetPegawai.emei || selectedTargetPegawai.imei || selectedTargetPegawai.device_id || selectedTargetPegawai.sim_serial || '')
       : config.deviceId;
+    const comma = base64Image.indexOf(',');
+    const lampiran = comma >= 0 ? base64Image.slice(comma + 1) : base64Image;
+    if (!lampiran) {
+      setLoading(false);
+      setOutput({ type: 'error', text: '❌ Foto tidak valid. Pilih ulang foto sebelum mengirim.' });
+      return;
+    }
 
     const payload = {
       tanggal: tanggal,
       keterangan: "Presensi Reguler",
-      lampiran: base64Image.split(',')[1],
+      lampiran,
       sim_serial: targetDeviceId,
       lattitude: finalLat,
       longitude: finalLng,
@@ -913,8 +896,8 @@ export default function Presensi() {
           </div>
         </div>
         
-        <input type="file" ref={fileInputRef} accept="image/*,.heic,.heif,.tif,.tiff,.dng,.bmp,.ico,.avif,.jxl" className="hidden" onChange={handleFileChange} />
-        <input type="file" ref={cameraInputRef} accept="image/*,.heic,.heif,.tif,.tiff,.dng,.bmp,.ico,.avif,.jxl" capture="user" className="hidden" onChange={handleFileChange} />
+        <input type="file" ref={fileInputRef} accept="image/*,.heic,.heif,.tif,.tiff,.bmp,.ico,.avif,.jxl" className="hidden" onChange={handleFileChange} />
+        <input type="file" ref={cameraInputRef} accept="image/*,.heic,.heif,.tif,.tiff,.bmp,.ico,.avif,.jxl" capture="user" className="hidden" onChange={handleFileChange} />
         
         {/* Live Camera View */}
         {isCameraActive && (

@@ -3,9 +3,9 @@
 // (Preset Automasi, Presensi, Produktivitas Harian):
 //
 //   • native browser (JPEG/PNG/WebP/GIF/BMP/ICO/SVG/AVIF) — createImageBitmap
-//     (dengan EXIF orientation) atau fallback <img> + blob URL
+//     atau fallback <img> + blob URL
 //   • HEIC/HEIF — dikonversi ke JPEG dulu via heic2any (WASM libheif)
-//   • TIFF/DNG (dan TIFF-like lain) — UTIF
+//   • TIFF (dan TIFF-like lain) — UTIF
 //
 // sniffImageKind memakai magic bytes karena MIME file dari picker HP sering
 // kosong / salah. Decode selalu mengembalikan canvas full-resolution;
@@ -16,7 +16,11 @@ export type ImageKind =
   | 'jpeg' | 'png' | 'gif' | 'bmp' | 'webp' | 'svg'
   | 'ico'  | 'avif' | 'heic' | 'tiff' | 'jxl' | 'unknown';
 
+const RAW_IMAGE_EXT_RE = /\.(dng|cr2|nef|arw|orf|rw2)$/i;
+
 export async function sniffImageKind(file: File): Promise<ImageKind> {
+  if (RAW_IMAGE_EXT_RE.test(file.name)) return 'unknown';
+
   try {
     const head = new Uint8Array(await file.slice(0, 64).arrayBuffer());
     const eq = (sig: number[], off = 0) => sig.every((b, i) => head[off + i] === b);
@@ -37,7 +41,7 @@ export async function sniffImageKind(file: File): Promise<ImageKind> {
     const text = String.fromCharCode(...head).toLowerCase();
     if (text.includes('<svg')) return 'svg';
     if (/\.(heic|heif)$/i.test(file.name)) return 'heic';
-    if (/\.(tiff?|dng|cr2|nef|arw|orf|rw2)$/i.test(file.name)) return 'tiff';
+    if (/\.tiff?$/i.test(file.name)) return 'tiff';
     if (file.type === 'image/avif') return 'avif';
     return 'unknown';
   } catch {
@@ -45,10 +49,11 @@ export async function sniffImageKind(file: File): Promise<ImageKind> {
   }
 }
 
-const IMAGE_EXT_RE = /\.(jpe?g|png|webp|gif|bmp|tiff?|heic|heif|avif|svg|ico|jxl|dng|cr2|nef|arw)$/i;
+const IMAGE_EXT_RE = /\.(jpe?g|png|webp|gif|bmp|tiff?|heic|heif|avif|svg|ico|jxl)$/i;
 
 /** Apakah file ini kemungkinan besar gambar? (untuk validasi input file) */
 export function isProbablyImageFile(file: File): boolean {
+  if (RAW_IMAGE_EXT_RE.test(file.name)) return false;
   if (file.type.startsWith('image/')) return true;
   return IMAGE_EXT_RE.test(file.name);
 }
@@ -86,8 +91,7 @@ export function canvasToJpeg(canvas: HTMLCanvasElement, quality = 0.92): string 
 async function nativeDecode(file: File): Promise<DecodedImage> {
   if (typeof createImageBitmap === 'function') {
     try {
-      // 'from-image' → EXIF orientation diterapkan, piksel sudah tegak
-      const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      const bmp = await createImageBitmap(file);
       if (bmp.width > 0 && bmp.height > 0) {
         const c = document.createElement('canvas');
         c.width = bmp.width; c.height = bmp.height;
@@ -144,32 +148,7 @@ async function heicDecode(file: File): Promise<DecodedImage> {
   }
 }
 
-// ─── Terapkan EXIF orientation (sumber dengan tag orientasi, mis. TIFF) ───────
-function applyOrientation(src: HTMLCanvasElement, orientation: number): HTMLCanvasElement {
-  const o = Number(orientation) || 1;
-  if (o === 1) return src;
-  const w = src.width, h = src.height;
-  const swap = o >= 5 && o <= 8;
-  const c = document.createElement('canvas');
-  c.width = swap ? h : w;
-  c.height = swap ? w : h;
-  const ctx = c.getContext('2d');
-  if (!ctx) return src;
-  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
-  switch (o) {
-    case 2: ctx.translate(w, 0); ctx.scale(-1, 1); break;
-    case 3: ctx.translate(w, h); ctx.rotate(Math.PI); break;
-    case 4: ctx.translate(0, h); ctx.scale(1, -1); break;
-    case 5: ctx.setTransform(0, 1, 1, 0, 0, 0); break;
-    case 6: ctx.translate(h, 0); ctx.rotate(Math.PI / 2); break;
-    case 7: ctx.setTransform(0, -1, -1, 0, h, w); break;
-    case 8: ctx.translate(0, w); ctx.rotate(-Math.PI / 2); break;
-  }
-  ctx.drawImage(src, 0, 0);
-  return c;
-}
-
-// ─── TIFF/DNG (dan TIFF-like lain) → RGBA via UTIF ────────────────────────────
+// ─── TIFF (dan TIFF-like lain) → RGBA via UTIF ────────────────────────────────
 async function tiffDecode(file: File): Promise<DecodedImage> {
   const mod: any = await import('utif');
   const UTIF: any = mod.default ?? mod;
@@ -190,8 +169,7 @@ async function tiffDecode(file: File): Promise<DecodedImage> {
   const ctx = raw.getContext('2d');
   if (!ctx) throw new Error('No canvas ctx');
   ctx.putImageData(new ImageData(new Uint8ClampedArray(rgba), w, h), 0, 0);
-  const orientation = Array.isArray(ifd.t274) ? ifd.t274[0] : (ifd.t274 ?? 1);
-  return { canvas: applyOrientation(raw, orientation) };
+  return { canvas: raw };
 }
 
 /**

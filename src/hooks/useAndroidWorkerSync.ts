@@ -14,6 +14,7 @@ import { useEffect, useRef } from 'react';
 import { useAppContext } from '../context/AppContext';
 import {
   bacaSemuaPreset,
+  bacaSemuaStockFoto,
 } from '../lib/presetAutomasi';
 import {
   isAndroidJadhuman,
@@ -62,13 +63,22 @@ export function useAndroidWorkerSync(): void {
         // Jangan sync jika belum ada idPegawai (belum login ke server)
         if (!session.idPegawai) return;
 
-        syncSessionToAndroid(session);
-
-        // 2. Baca preset aktif
-        const semuaPreset = await bacaSemuaPreset(username);
+        // 2. Baca preset dan stock foto sebelum WebView tidur.
+        const [semuaPreset, semuaFoto] = await Promise.all([
+          bacaSemuaPreset(username),
+          bacaSemuaStockFoto(),
+        ]);
         if (cancelled) return;
 
         const aktif = semuaPreset.filter(p => p.aktif);
+        const fotoIdsDipakai = new Set(aktif.flatMap(p => p.stockFotoIds ?? []));
+        const photos: Record<string, string> = {};
+        for (const foto of semuaFoto) {
+          if (!fotoIdsDipakai.has(foto.id)) continue;
+          const comma = foto.dataUrl.indexOf(',');
+          const base64 = comma >= 0 ? foto.dataUrl.slice(comma + 1) : foto.dataUrl;
+          if (base64) photos[foto.id] = base64;
+        }
 
         const syncData: PresetSyncData[] = aktif.map(p => ({
           id:        p.id,
@@ -78,14 +88,17 @@ export function useAndroidWorkerSync(): void {
           jamSelesai: p.jamSelesai,
           hariAktif: p.hariAktif as number[],
           aktif:     p.aktif,
+          stockFotoIds: (p.stockFotoIds ?? []).filter(id => !!photos[id]),
         }));
 
         // Cek apakah data berubah sebelum sync (hindari SharedPreferences write berlebihan)
-        const hash = JSON.stringify(syncData) + session.idPegawai + session.latitude + session.longitude;
+        const photoSignature = Object.entries(photos).map(([id, base64]) => [id, base64.length]);
+        const hash = JSON.stringify({ session, presets: syncData, photoSignature });
         if (hash === lastSyncRef.current) return;
         lastSyncRef.current = hash;
 
-        syncPresetsToAndroid(syncData);
+        syncSessionToAndroid(session);
+        syncPresetsToAndroid(syncData, photos);
       } catch (e) {
         console.warn('[AndroidWorkerSync] Gagal sync:', e);
       }

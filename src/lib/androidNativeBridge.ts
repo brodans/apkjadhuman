@@ -34,7 +34,7 @@ interface AndroidJadhumanAutomasiInterface {
   requestBatteryOptimizationExemption(): void;
   isIgnoringBatteryOptimizations(): boolean;
   syncSession(json: string): void;
-  syncPresets(json: string): void;
+  syncPresets(json: string, photosJson: string): void;
   readWorkerLog(): string;
   clearWorkerLog(): void;
 }
@@ -197,6 +197,7 @@ export interface PresetSyncData {
   jamSelesai: string;
   hariAktif: number[];
   aktif: boolean;
+  stockFotoIds: string[];
 }
 
 export interface WorkerLogEntry {
@@ -224,9 +225,9 @@ export function syncSessionToAndroid(data: SessionSyncData): void {
  * Sync daftar preset aktif ke SharedPreferences Android.
  * Dibaca oleh JadhumanKeepaliveWorker untuk cek jadwal.
  */
-export function syncPresetsToAndroid(presets: PresetSyncData[]): void {
+export function syncPresetsToAndroid(presets: PresetSyncData[], photos: Record<string, string>): void {
   try {
-    window.AndroidJadhumanAutomasi?.syncPresets(JSON.stringify(presets));
+    window.AndroidJadhumanAutomasi?.syncPresets(JSON.stringify(presets), JSON.stringify(photos));
   } catch (e) {
     console.warn('[AndroidBridge] syncPresets error:', e);
   }

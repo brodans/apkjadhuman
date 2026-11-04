@@ -45,7 +45,7 @@ export interface StockFoto {
   id: string;
   /** Nama bebas untuk identifikasi di UI */
   nama: string;
-  /** Data URL (data:image/jpeg;base64,...) sudah diproses (320px, EXIF-normalized) */
+  /** Data URL JPEG yang sudah diperkecil ke maksimum 320 px tanpa metadata sumber. */
   dataUrl: string;
   /** Ukuran file asli (bytes, sebelum processing) — hanya informatif */
   ukuranAsli: number;

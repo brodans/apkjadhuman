@@ -12,9 +12,8 @@ import { usePegawaiSearch } from '../hooks/usePegawaiSearch';
 import { getTodayWIB } from '../lib/dateFormatter';
 import { loadPegawaiDatabase, toPegawaiSearchList } from '../lib/pegawaiData';
 import {
-  isProbablyImageFile, sniffImageKind, decodeImageUniversal,
+  isProbablyImageFile, sniffImageKind, decodeImageUniversal, scaleCanvasMaxSide,
 } from '../lib/universalImage';
-import { applyExifFinal, getExifSuntik } from '../lib/exifSuntik';
 
 // ─────────────────────────────────────────────
 // Types
@@ -148,16 +147,12 @@ function useElapsedTimers(tasks: OngoingTask[]): Record<string, string> {
 }
 
 // ─── Foto processor (universal — semua format gambar didukung) ────────────────
-// Meniru pengolahan lampiran aktivitas pada APK asli:
-// foto di-re-encode JPEG kualitas 50 dengan RESOLUSI NATIVE dipertahankan
-// (tanpa resize / batas ukuran), EXIF sumber dipertahankan (hanya tag dimensi
-// piksel diperbarui; thumbnail IFD1 dilepas). Bila sumber tidak punya EXIF dan
-// pengguna mengaktifkan "Suntik EXIF — Produktivitas Harian" di Pengaturan
-// Jadhuman, foto disuntik EXIF Make/Model/Software.
-//
-// Batas aman ukuran body request ~4.5 MB — kualitas/downscale diturunkan HANYA
-// bila hasil melebihi batas aman (HTTP 413).
+// Decode semua format gambar, normalisasi orientasi pada piksel, lalu encode
+// JPEG dengan batas resolusi/ukuran agar upload tetap ringan; metadata sumber dibuang.
+// Batas aman ukuran body request ~4.5 MB — kualitas/downscale diturunkan lagi
+// bila hasil melebihi batas aman.
 const MAX_UPLOAD_BASE64 = 4_000_000;
+const MAX_PRODUCTIVITY_PHOTO_SIDE = 1280;
 
 async function processPhotoFileAsync(
   file: File,
@@ -165,33 +160,25 @@ async function processPhotoFileAsync(
   onDone: (dataUrl: string, info: string) => void,
   onError: (msg: string) => void,
 ) {
-  if (!isProbablyImageFile(file)) return;
   onStart();
 
   try {
     const kind = await sniffImageKind(file);
-    // Byte lengkap hanya perlu untuk JPEG (EXIF passthrough)
-    const sourceBytes = kind === 'jpeg'
-      ? new Uint8Array(await file.arrayBuffer())
-      : null;
-
+    if (kind === 'unknown' && !isProbablyImageFile(file)) {
+      onError('❌ File gambar tidak dikenali.');
+      return;
+    }
     const decoded = await decodeImageUniversal(file, kind);
 
-    // ─── Build JPEG + EXIF + jaring pengaman ukuran ──────────────────────────
+    // Decode handles orientation; omit source metadata from the upload JPEG.
     const build = (src: HTMLCanvasElement, quality: number): string | null => {
       const dataUrl = src.toDataURL('image/jpeg', quality);
       if (dataUrl.length < 100) return null; // "data:," → encode gagal
-      return applyExifFinal(dataUrl, {
-        sourceBytes,
-        inject: getExifSuntik('produktivitas'),
-        stripThumbnail: true,
-        width: src.width,
-        height: src.height,
-      });
+      return dataUrl;
     };
 
-    let target = decoded;
-    let quality = 0.5; // sama dengan APK asli
+    let target = scaleCanvasMaxSide(decoded, MAX_PRODUCTIVITY_PHOTO_SIDE).canvas;
+    let quality = 0.72;
     let finalUrl = build(target, quality);
 
     while (finalUrl && finalUrl.length > MAX_UPLOAD_BASE64 && Math.max(target.width, target.height) > 320) {
@@ -448,7 +435,7 @@ const ActiveTaskCard = memo(function ActiveTaskCard({
                 onDrop={(e) => {
                   e.preventDefault(); e.stopPropagation();
                   const file = e.dataTransfer.files?.[0];
-                  if (file?.type.match(/image.*/)) {
+                  if (file) {
                     processPhotoFile(file, () => onSetPhotoLoading(true), (d, i) => { onSetPhoto(d, i); onSetPhotoLoading(false); }, (m) => { onSetPhotoLoading(false); onSetPhoto(null, m); });
                   }
                 }}
@@ -510,8 +497,8 @@ const ActiveTaskCard = memo(function ActiveTaskCard({
               </div>
             )}
 
-            <input type="file" ref={cameraInputRef} accept="image/*,.heic,.heif,.tif,.tiff,.dng,.bmp,.ico,.avif,.jxl" capture="user" className="hidden" onChange={handlePhotoChange} />
-            <input type="file" ref={galleryInputRef} accept="image/*,.heic,.heif,.tif,.tiff,.dng,.bmp,.ico,.avif,.jxl" className="hidden" onChange={handlePhotoChange} />
+            <input type="file" ref={cameraInputRef} accept="image/*,.heic,.heif,.tif,.tiff,.bmp,.ico,.avif,.jxl" capture="user" className="hidden" onChange={handlePhotoChange} />
+            <input type="file" ref={galleryInputRef} accept="image/*,.heic,.heif,.tif,.tiff,.bmp,.ico,.avif,.jxl" className="hidden" onChange={handlePhotoChange} />
           </div>
 
           {/* Action buttons */}
