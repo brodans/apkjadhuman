@@ -37,6 +37,7 @@ interface AndroidJadhumanAutomasiInterface {
   syncPresets(json: string, photosJson: string): void;
   readWorkerLog(): string;
   clearWorkerLog(): void;
+  saveImageToGallery(base64: string, filename: string): boolean;
 }
 
 declare global {
@@ -249,4 +250,18 @@ export function clearAndroidWorkerLog(): void {
   try {
     window.AndroidJadhumanAutomasi?.clearWorkerLog();
   } catch { /* ignore */ }
+}
+
+/**
+ * Simpan gambar (base64) ke galeri device Android via MediaStore.
+ * Mengembalikan true jika berhasil, false jika gagal atau izin belum diberikan.
+ * Parameter base64 boleh dengan atau tanpa prefix "data:image/...;base64,".
+ */
+export function saveImageToGalleryAndroid(base64: string, filename: string): boolean {
+  try {
+    return window.AndroidJadhumanAutomasi?.saveImageToGallery(base64, filename) ?? false;
+  } catch (e) {
+    console.warn('[AndroidBridge] saveImageToGallery error:', e);
+    return false;
+  }
 }

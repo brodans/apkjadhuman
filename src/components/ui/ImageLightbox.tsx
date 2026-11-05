@@ -3,6 +3,11 @@ import { createPortal } from 'react-dom';
 import { X, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { resolveImageSource, useResolvedImageSource } from '../../hooks/useResolvedImageSource';
 import { acquireNativeDarkOverlay } from '../../lib/nativeSystemBars';
+import {
+  isAndroid,
+  saveImageToGalleryAndroid,
+  kirimNotifikasiNative,
+} from '../../lib/androidAutomasiBridge';
 
 interface ImageItem {
   src: string;
@@ -249,11 +254,59 @@ export default function ImageLightbox({
     };
   }, [scale, position, isDragging, dragStart]);
 
+  /**
+   * Konversi sumber gambar (data: URL, blob:, atau remote URL) ke string base64 murni
+   * (tanpa prefix "data:...;base64,"). Dipakai untuk mengirim ke bridge native Android.
+   */
+  const imageSourceToBase64 = async (src: string): Promise<string | null> => {
+    try {
+      if (src.startsWith('data:')) {
+        const comma = src.indexOf(',');
+        return comma >= 0 ? src.slice(comma + 1) : '';
+      }
+      // blob: atau remote URL → fetch → FileReader → base64
+      const response = await fetch(src);
+      if (!response.ok) return null;
+      const blob = await response.blob();
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          const comma = result.indexOf(',');
+          resolve(comma >= 0 ? result.slice(comma + 1) : result);
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return null;
+    }
+  };
+
   const handleDownload = async () => {
     const filename = `${currentTitle.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'foto'}.jpg`;
     let downloadSource = resolvedCurrentSrc || currentSrc;
     try {
       if (!resolvedCurrentSrc) downloadSource = await resolveImageSource(currentSrc);
+
+      // ── Android: simpan ke galeri via MediaStore (bridge native) ──
+      if (isAndroid()) {
+        const base64 = await imageSourceToBase64(downloadSource);
+        if (base64) {
+          const namaFile = filename.replace(/\.jpg$/i, '');
+          const success = saveImageToGalleryAndroid(base64, namaFile);
+          await kirimNotifikasiNative(
+            success ? '✅ Foto Tersimpan' : '⚠️ Gagal Menyimpan',
+            success
+              ? `Foto tersimpan ke galeri: ${filename}`
+              : 'Gagal menyimpan foto ke galeri. Pastikan izin penyimpanan diberikan, lalu coba lagi.',
+          );
+          return;
+        }
+        // Jika base64 gagal, lanjut ke fallback <a download>
+      }
+
+      // ── Desktop / browser: fallback <a download> ──
       if (downloadSource.startsWith('data:')) {
         const a = document.createElement('a');
         a.href = downloadSource;

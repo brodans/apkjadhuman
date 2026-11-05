@@ -18,4 +18,5 @@ export {
   syncPresetsToAndroid,
   readAndroidWorkerLog,
   clearAndroidWorkerLog,
+  saveImageToGalleryAndroid,
 } from './androidNativeBridge';

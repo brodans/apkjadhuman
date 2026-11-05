@@ -94,6 +94,11 @@ for (const p of perms) {
     manifest = manifest.replace(/<application\b/, `<uses-permission android:name="${p}" />\n    <application`);
   }
 }
+// WRITE_EXTERNAL_STORAGE hanya untuk API < 29 (scoped storage di Q+ pakai MediaStore)
+if (!manifest.includes('WRITE_EXTERNAL_STORAGE')) {
+  manifest = manifest.replace(/<application\b/,
+    '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />\n    <application');
+}
 // Tambahkan service + receiver (idempotent)
 if (!manifest.includes('JadhumanForegroundService')) {
   manifest = manifest.replace('</application>', `
@@ -348,9 +353,12 @@ console.log('✅ AutomationWebView.kt ditulis');
 put(join(root, 'java/id/go/jatim/jadhuman/MainActivity.kt'), `package id.go.jatim.jadhuman
 
 import android.Manifest
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
@@ -358,7 +366,9 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.provider.MediaStore
 import android.provider.Settings
+import android.util.Base64
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
@@ -527,6 +537,69 @@ class MainActivity : TauriActivity() {
         getSharedPreferences("jadhuman_worker_log", android.content.Context.MODE_PRIVATE)
           .edit().putString("log_json", "[]").apply()
       } catch (_: Exception) {}
+    }
+
+    /**
+     * Simpan gambar (base64) ke galeri device via MediaStore.
+     * Dipanggil ImageLightbox.tsx saat tombol Unduh ditekan.
+     * Android 10+ (API 29) tidak butuh WRITE_EXTERNAL_STORAGE (scoped storage).
+     */
+    @JavascriptInterface
+    fun saveImageToGallery(base64: String, filename: String): Boolean {
+      try {
+        // Permission check untuk API < 29 (Q+ scoped storage tidak butuh izin)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+          if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+              != PackageManager.PERMISSION_GRANTED) {
+            mainHandler.post {
+              requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 1001)
+            }
+            return false
+          }
+        }
+
+        // Strip prefix "data:image/...;base64," jika ada
+        val cleanBase64 = if (base64.contains(",")) {
+          base64.substring(base64.indexOf(",") + 1)
+        } else base64
+
+        val imageBytes = Base64.decode(cleanBase64, Base64.DEFAULT)
+        val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+          ?: return false
+
+        val displayName = if (filename.endsWith(".jpg", true) || filename.endsWith(".jpeg", true)) {
+          filename
+        } else {
+          "\${filename}.jpg"
+        }
+
+        val contentValues = ContentValues().apply {
+          put(MediaStore.Images.Media.DISPLAY_NAME, displayName)
+          put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Jadhuman")
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+          }
+        }
+
+        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+          ?: return false
+
+        var success = false
+        contentResolver.openOutputStream(uri)?.use { out ->
+          success = bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+          val updateValues = ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }
+          contentResolver.update(uri, updateValues, null, null)
+        }
+
+        return success
+      } catch (e: Exception) {
+        Log.e("JadhumanAutomasi", "saveImageToGallery error: \${e.message}")
+        return false
+      }
     }
   }
 
