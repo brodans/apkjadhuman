@@ -31,6 +31,7 @@ import {
   stopAndroidForegroundService,
   kirimNotifikasiNative,
   requestAndroidNotificationPermission,
+  readAndroidWorkerLog,
 } from '../lib/androidAutomasiBridge';
 
 const INTERVAL_MS = 30_000;
@@ -125,12 +126,57 @@ async function eksekusiPreset(
   }
 }
 
+/**
+ * Sinkronkan log eksekusi dari Android native worker (SharedPreferences) ke IndexedDB.
+ *
+ * Saat app di-kill, JadhumanKeepaliveWorker (Kotlin) mengeksekusi presensi dan
+ * menulis log ke SharedPreferences-nya sendiri ("jadhuman_worker_log"). Log itu
+ * TIDAK terlihat oleh IndexedDB (yang dibaca oleh sudahDieksekusiHariIni).
+ * Akibatnya, saat app dibuka kembali, scheduler WebView mengira belum ada
+ * presensi hari ini → presensi dieksekusi ulang (double absen).
+ *
+ * Fungsi ini menyalin entri log worker hari ini ke IndexedDB sehingga
+ * sudahDieksekusiHariIni mengembalikan true dan scheduler melewatkan preset
+ * yang sudah dieksekusi worker native. tulisLog bersifat idempoten (dedup
+ * per presetId+tanggal), jadi aman dipanggil berulang.
+ *
+ * Log native TIDAK dihapus — ia tetap dipakai worker sebagai store deduplikasi
+ * sendiri (sudahEksekusiHariIni di sisi Kotlin).
+ */
+async function sinkronkanLogWorkerKeIndexedDB(username: string): Promise<void> {
+  const workerLogs = readAndroidWorkerLog();
+  if (!workerLogs.length) return;
+
+  const tanggalHariIni = getTodayWIBAutomasi();
+
+  for (const entry of workerLogs) {
+    // Hanya proses entri hari ini — entri tanggal lain tidak relevan untuk
+    // deduplikasi scheduler dan sudah ada di log IndexedDB masing-masing.
+    if (entry.tanggal !== tanggalHariIni) continue;
+
+    const log: LogEksekusi = {
+      presetId: entry.presetId,
+      tanggal: entry.tanggal,
+      fotoDipilih: '',  // worker native tidak mencatat ID foto yang dipakai
+      eksekusiPada: entry.eksekusiPada,
+      berhasil: entry.berhasil,
+      pesan: entry.pesan,
+    };
+    await tulisLog(username, entry.tanggal, log);
+  }
+}
+
 async function cekDanEksekusiSemua(
   presets: PresetAutomasi[],
   ctx: AutomasiContext,
   onEksekusi?: UseAutomasiSchedulerOptions['onEksekusi'],
 ): Promise<void> {
   if (!presets.length) return;
+
+  // Sinkronkan log dari worker native ke IndexedDB SEBELUM cek deduplikasi.
+  // Mencegah presensi dieksekusi ulang saat app dibuka setelah worker native
+  // sudah berhasil mengeksekusi di latar belakang (fix double absen).
+  await sinkronkanLogWorkerKeIndexedDB(ctx.username);
 
   const jamSekarang = getNowWIBTime();
   const tanggal = getTodayWIBAutomasi();
