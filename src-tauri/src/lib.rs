@@ -10,6 +10,7 @@ const ABSENSI_IMG_URL: &str = "http://103.109.206.102:8087";
 fn default_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
+        .connect_timeout(std::time::Duration::from_secs(10))
         .danger_accept_invalid_certs(true)
         .build()
         .map_err(|e| e.to_string())

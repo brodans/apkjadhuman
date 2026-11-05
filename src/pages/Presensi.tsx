@@ -305,6 +305,16 @@ export default function Presensi() {
   // ke 320 px. Metadata sumber tidak dibaca atau disalin ke JPEG upload.
   const PRESENSI_LONG_SIDE = 320;
 
+/** Race a promise against a timeout — prevents infinite loading if invoke/network hangs. */
+function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMsg: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(timeoutMsg)), ms),
+    ),
+  ]);
+}
+
   const encodePresensi = (canvas: HTMLCanvasElement) => {
     const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
     if (dataUrl.length < 100) {
@@ -329,7 +339,11 @@ export default function Presensi() {
           setFileInfo('❌ File gambar tidak dikenali.');
           return;
         }
-        const source = await decodeImageUniversal(file, kind);
+        const source = await withTimeout(
+          decodeImageUniversal(file, kind),
+          45_000,
+          'Pemrosesan foto terlalu lama. Coba foto dengan ukuran lebih kecil atau format JPEG/PNG.',
+        );
         const srcW = source.width, srcH = source.height;
         if (!srcW || !srcH) {
           setFileInfo('❌ Gagal memproses foto.');
@@ -458,7 +472,11 @@ export default function Presensi() {
     };
 
     try {
-      const data = await sendRequest("/login/absen_mobile", payload);
+      const data = await withTimeout(
+        sendRequest("/login/absen_mobile", payload),
+        60_000,
+        'Server tidak merespons dalam 60 detik. Periksa koneksi internet dan coba lagi.',
+      );
       
       if (data.success) {
         // ── Urai field detail dari response ─────────────────────────────
