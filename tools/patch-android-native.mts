@@ -357,8 +357,6 @@ import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
@@ -543,6 +541,10 @@ class MainActivity : TauriActivity() {
      * Simpan gambar (base64) ke galeri device via MediaStore.
      * Dipanggil ImageLightbox.tsx saat tombol Unduh ditekan.
      * Android 10+ (API 29) tidak butuh WRITE_EXTERNAL_STORAGE (scoped storage).
+     *
+     * Raw bytes ditulis langsung — TIDAK decode→re-encode via Bitmap —
+     * sehingga EXIF metadata (GPS, orientasi, kamera, timestamp) 100% utuh,
+     * identik byte-per-byte dengan file asli.
      */
     @JavascriptInterface
     fun saveImageToGallery(base64: String, filename: String): Boolean {
@@ -558,24 +560,50 @@ class MainActivity : TauriActivity() {
           }
         }
 
-        // Strip prefix "data:image/...;base64," jika ada
+        // Strip prefix "data:image/...;base64," jika masih ada
         val cleanBase64 = if (base64.contains(",")) {
           base64.substring(base64.indexOf(",") + 1)
         } else base64
 
         val imageBytes = Base64.decode(cleanBase64, Base64.DEFAULT)
-        val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-          ?: return false
+        if (imageBytes.isEmpty()) return false
 
-        val displayName = if (filename.endsWith(".jpg", true) || filename.endsWith(".jpeg", true)) {
+        // Deteksi MIME dari magic bytes (sniffing) — lebih akurat dari MIME header
+        val mimeType = when {
+          imageBytes.size >= 3 &&
+            imageBytes[0] == 0xFF.toByte() && imageBytes[1] == 0xD8.toByte() && imageBytes[2] == 0xFF.toByte() -> "image/jpeg"
+          imageBytes.size >= 4 &&
+            imageBytes[0] == 0x89.toByte() && imageBytes[1] == 0x50.toByte() &&
+            imageBytes[2] == 0x4E.toByte() && imageBytes[3] == 0x47.toByte() -> "image/png"
+          imageBytes.size >= 12 &&
+            imageBytes[0] == 0x52.toByte() && imageBytes[1] == 0x49.toByte() &&
+            imageBytes[2] == 0x46.toByte() && imageBytes[3] == 0x46.toByte() &&
+            imageBytes[8] == 0x57.toByte() && imageBytes[9] == 0x45.toByte() &&
+            imageBytes[10] == 0x42.toByte() && imageBytes[11] == 0x50.toByte() -> "image/webp"
+          imageBytes.size >= 3 &&
+            imageBytes[0] == 0x47.toByte() && imageBytes[1] == 0x49.toByte() &&
+            imageBytes[2] == 0x46.toByte() -> "image/gif"
+          else -> "image/jpeg"
+        }
+
+        // Ekstensi file sesuai MIME sebenarnya
+        val ext = when (mimeType) {
+          "image/png"  -> ".png"
+          "image/webp" -> ".webp"
+          "image/gif"  -> ".gif"
+          else         -> ".jpg"
+        }
+        val displayName = if (filename.endsWith(".jpg", true) || filename.endsWith(".jpeg", true) ||
+            filename.endsWith(".png", true) || filename.endsWith(".webp", true) ||
+            filename.endsWith(".gif", true)) {
           filename
         } else {
-          "\${filename}.jpg"
+          "\${filename}\${ext}"
         }
 
         val contentValues = ContentValues().apply {
           put(MediaStore.Images.Media.DISPLAY_NAME, displayName)
-          put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+          put(MediaStore.Images.Media.MIME_TYPE, mimeType)
           if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Jadhuman")
             put(MediaStore.Images.Media.IS_PENDING, 1)
@@ -585,9 +613,13 @@ class MainActivity : TauriActivity() {
         val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
           ?: return false
 
+        // Tulis RAW bytes langsung ke MediaStore — tidak ada decode→re-encode.
+        // EXIF metadata (GPS, orientasi, kamera, timestamp) preserved 100%.
         var success = false
         contentResolver.openOutputStream(uri)?.use { out ->
-          success = bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+          out.write(imageBytes)
+          out.flush()
+          success = true
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
